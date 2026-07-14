@@ -77,6 +77,9 @@ cd paranoia-local
 pip install -e .
 ```
 
+This puts a `paranoia-local` executable on your `PATH` — the command both the
+Claude Code and Codex MCP entries below launch.
+
 ### Wire into Claude Code (reviews performed by Codex)
 
 ```bash
@@ -92,22 +95,43 @@ critique, or a second opinion.
 
 ### Wire into Codex (reviews performed by Claude Code)
 
-Add to `~/.codex/config.toml`:
+Register the server (this writes the `[mcp_servers.paranoia]` table to
+`~/.codex/config.toml`):
+
+```bash
+codex mcp add paranoia -- paranoia-local --engine claude
+```
+
+Then **you must add the timeout keys** — `codex mcp add` does not set them, and
+the defaults are far too low. Edit `~/.codex/config.toml` so the entry reads:
 
 ```toml
 [mcp_servers.paranoia]
 command = "paranoia-local"
 args = ["--engine", "claude"]
-# REQUIRED: an agentic review takes minutes. Codex's default MCP tool timeout is
-# 60s, which will abort every review. Give it an hour.
+# REQUIRED: an agentic review is many turns of tool use and runs for minutes.
+# Codex's default MCP tool timeout is 60s and startup is 10s, which abort every
+# review. Give the tool an hour and startup 30s.
 tool_timeout_sec = 3600
 startup_timeout_sec = 30
 ```
 
+Verify it took:
+
+```bash
+codex mcp get paranoia
+#   tool_timeout_sec: 3600
+#   startup_timeout_sec: 30
+```
+
 > **Timeout gotcha.** A full review is many turns of tool use and can run for
 > several minutes. Claude Code's stdio MCP idle timeout (~30 min) is fine out of
-> the box; **Codex defaults to a 60-second tool timeout** and must be raised as
-> shown above or every review fails.
+> the box; **Codex defaults to a 60-second tool timeout** (`tool_timeout_sec`)
+> and a 10-second startup timeout (`startup_timeout_sec`), and both must be
+> raised as shown above or every review fails. 3600s is a generous per-call
+> ceiling — a single review is minutes, and a multi-round convergence loop is
+> separate calls, each well under the limit. Raise it further for very large
+> repos at high effort.
 
 ## Usage
 

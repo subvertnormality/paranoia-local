@@ -167,6 +167,7 @@ def dispatch(
     default_engine_name: str,
     log_dir: Path = DEFAULT_LOG_DIR,
     now: Clock | None = None,
+    on_progress: Callable[[str], None] | None = None,
 ) -> str:
     try:
         handler = _HANDLERS.get(name)
@@ -177,6 +178,8 @@ def dispatch(
         kwargs: dict[str, Any] = {"engine": engine, "log_dir": log_dir}
         if now is not None:
             kwargs["now"] = now
+        if on_progress is not None:
+            kwargs["on_progress"] = on_progress
         return handler(arguments, **kwargs)
     except Exception as exc:  # noqa: BLE001 — surface any failure as readable text
         return f"[paranoia-local error] {type(exc).__name__}: {exc}"
@@ -195,13 +198,59 @@ def build_server(
 
     @srv.call_tool()
     async def _call_tool(name: str, arguments: dict) -> list[TextContent]:
+        # A review runs for many minutes with no output; when the client sent a
+        # progressToken, stream the engine's activity back as MCP progress
+        # notifications so the call is visibly alive. The handler runs on a
+        # worker thread, so notifications hop back to the event loop.
+        on_progress = _progress_callback(srv, asyncio.get_running_loop())
         result = await asyncio.to_thread(
             dispatch, name, arguments,
             default_engine_name=default_engine_name, log_dir=log_dir, now=now,
+            on_progress=on_progress,
         )
         return [TextContent(type="text", text=result)]
 
     return srv
+
+
+# Progress notifications are rate-limited: an agentic reviewer can emit event
+# bursts (one per file read), and each notification is a protocol message.
+_PROGRESS_MIN_INTERVAL_SEC = 1.0
+
+
+def _progress_callback(
+    srv: Server, loop: asyncio.AbstractEventLoop
+) -> Callable[[str], None] | None:
+    """Build a thread-safe progress callback from the CURRENT request's
+    progressToken, or None when the client didn't ask for progress."""
+    import time
+
+    try:
+        ctx = srv.request_context
+    except LookupError:
+        return None
+    meta = getattr(ctx, "meta", None)
+    token = getattr(meta, "progressToken", None) if meta else None
+    if token is None:
+        return None
+    session = ctx.session
+    state = {"count": 0.0, "last": 0.0}
+
+    def _cb(message: str) -> None:
+        now_s = time.monotonic()
+        if now_s - state["last"] < _PROGRESS_MIN_INTERVAL_SEC:
+            return
+        state["last"] = now_s
+        state["count"] += 1.0
+        # Fire-and-forget: the reviewer thread must never block on the client.
+        asyncio.run_coroutine_threadsafe(
+            session.send_progress_notification(
+                token, state["count"], total=None, message=message
+            ),
+            loop,
+        )
+
+    return _cb
 
 
 async def run_stdio(server_obj: Server) -> None:

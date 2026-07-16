@@ -55,6 +55,11 @@ def _footer(review: Review, engine: Engine) -> str:
     return (review.text or "[empty review]") + note
 
 
+def _progress_kwargs(on_progress: Callable[[str], None] | None) -> dict[str, Any]:
+    """Pass on_progress only when set — injected engines may predate the kwarg."""
+    return {"on_progress": on_progress} if on_progress is not None else {}
+
+
 def _log(
     log_dir: Path,
     tool: str,
@@ -82,6 +87,7 @@ def critique_branch(
     engine: Engine,
     log_dir: Path = logs.DEFAULT_LOG_DIR,
     now: Clock = _default_clock,
+    on_progress: Callable[[str], None] | None = None,
 ) -> str:
     repo = _require_repo(arguments)
     cfg = load_repo_config(repo)
@@ -105,10 +111,12 @@ def critique_branch(
     prompt = prompts.compose(prompts.CODE_REVIEW_INSTRUCTIONS, packet)
 
     if target.is_dirty or not isolate:
-        review = engine.run(prompt, repo, model, effort, web_search)
+        review = engine.run(prompt, repo, model, effort, web_search,
+                            **_progress_kwargs(on_progress))
     else:
         with worktree_at(repo, head_ref) as wt:
-            review = engine.run(prompt, wt, model, effort, web_search)
+            review = engine.run(prompt, wt, model, effort, web_search,
+                                **_progress_kwargs(on_progress))
 
     _log(log_dir, "critique_branch", engine, review, now,
          {"target": target.description, "model": model})
@@ -148,6 +156,7 @@ def critique_plan(
     engine: Engine,
     log_dir: Path = logs.DEFAULT_LOG_DIR,
     now: Clock = _default_clock,
+    on_progress: Callable[[str], None] | None = None,
 ) -> str:
     plan_text = arguments.get("plan_text")
     plan_path = arguments.get("plan_path")
@@ -175,7 +184,8 @@ def critique_plan(
 
     body = _plan_body(plan_text, context, focus, already, repo_grounded=bool(repo))
     prompt = prompts.compose(prompts.PLAN_REVIEW_INSTRUCTIONS, body)
-    review = engine.run(prompt, cwd, model, effort, web_search)
+    review = engine.run(prompt, cwd, model, effort, web_search,
+                        **_progress_kwargs(on_progress))
 
     _log(log_dir, "critique_plan", engine, review, now, {"grounded": bool(repo), "model": model})
     return _footer(review, engine)
@@ -209,6 +219,7 @@ def query(
     engine: Engine,
     log_dir: Path = logs.DEFAULT_LOG_DIR,
     now: Clock = _default_clock,
+    on_progress: Callable[[str], None] | None = None,
 ) -> str:
     question = arguments.get("question")
     if not question:
@@ -228,7 +239,8 @@ def query(
 
     body = _query_body(question, files, focus, repo_grounded=bool(repo))
     prompt = prompts.compose(prompts.QUERY_INSTRUCTIONS, body)
-    review = engine.run(prompt, cwd, model, effort, web_search)
+    review = engine.run(prompt, cwd, model, effort, web_search,
+                        **_progress_kwargs(on_progress))
 
     _log(log_dir, "query", engine, review, now, {"model": model})
     return _footer(review, engine)
@@ -240,6 +252,7 @@ def rebut(
     engine: Engine,
     log_dir: Path = logs.DEFAULT_LOG_DIR,
     now: Clock = _default_clock,
+    on_progress: Callable[[str], None] | None = None,
 ) -> str:
     session_ref = arguments.get("session_ref")
     rebuttal = arguments.get("rebuttal")
@@ -256,7 +269,8 @@ def rebut(
 
     body = f"=== AUTHOR'S COUNTER-EVIDENCE ===\n{rebuttal}"
     prompt = prompts.compose(prompts.REBUT_INSTRUCTIONS, body)
-    review = engine.resume(session_ref, prompt, repo, model, effort, web_search)
+    review = engine.resume(session_ref, prompt, repo, model, effort, web_search,
+                           **_progress_kwargs(on_progress))
 
     _log(log_dir, "rebut", engine, review, now, {"session_ref": session_ref, "model": model})
     return _footer(review, engine)

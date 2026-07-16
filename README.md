@@ -187,6 +187,18 @@ All tools accept:
   reads, web search) and write tools explicitly denied. The reviewer cannot edit
   your code, run your test suite, or reach the network except for opt-in web
   search.
+- **Hermetic — the audited repo cannot widen the reviewer.** The Claude engine
+  is spawned with `--setting-sources ""`, so it loads **no** `.claude` settings
+  files. Without this, `claude -p` merges the reviewed repo's
+  `.claude/settings.local.json` and your global `~/.claude/settings.json` on top
+  of paranoia's allow-list — and those routinely grant `Bash(python3:*)`,
+  `Bash(git commit:*)`, `Bash(python -m pytest …)` etc., silently handing the
+  reviewer arbitrary code execution and write-capable git on the very repo it is
+  auditing. Loading zero settings sources makes paranoia's `--allowedTools` the
+  sole authority. This is a flag on the **spawned reviewer subprocess only** — it
+  does not read, write, or affect any of your interactive `claude` sessions or
+  settings files. (Codex is already covered here by its OS-level read-only
+  sandbox, which no repo setting can loosen.)
 - **Isolated.** Committed reviews run inside a throwaway `git worktree` of the
   target ref, so they never collide with your working tree and can review a
   branch that isn't checked out. (Dirty-working-tree reviews necessarily run in

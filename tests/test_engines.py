@@ -107,6 +107,22 @@ class TestClaudeArgv:
         allowed = argv[argv.index("--allowedTools") + 1]
         assert "WebSearch" not in allowed
 
+    def test_loads_no_settings_sources(self) -> None:
+        # Hermetic read-only: the reviewed repo's (or the user's) own
+        # .claude settings must NOT widen the reviewer's permissions. Loading
+        # zero settings sources makes paranoia's --allowedTools the sole
+        # authority. Empty value = load none (verified against the real CLI).
+        e = engines.get_engine("claude")
+        argv = e.build_argv(cwd=Path("/repo"), model="m", effort="high", web_search=True)
+        i = argv.index("--setting-sources")
+        assert argv[i + 1] == ""
+
+    def test_resume_also_loads_no_settings_sources(self) -> None:
+        e = engines.get_engine("claude")
+        argv = e.build_resume_argv(session_ref="s", cwd=Path("/repo"), model="m", effort="high", web_search=False)
+        i = argv.index("--setting-sources")
+        assert argv[i + 1] == ""
+
     def test_resume_argv_targets_session(self) -> None:
         e = engines.get_engine("claude")
         argv = e.build_resume_argv(session_ref="sess-xyz", cwd=Path("/repo"), model="m", effort="high", web_search=False)

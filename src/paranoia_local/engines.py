@@ -185,6 +185,11 @@ class ClaudeEngine(Engine):
             "--model", model,
             "--effort", effort,
             "--permission-mode", "default",
+            # Hermetic read-only: load NO settings files, so the reviewed repo's
+            # (or the user's global) .claude allow-lists cannot widen the
+            # reviewer beyond paranoia's --allowedTools. This is a flag on the
+            # spawned subprocess only — it does not affect any other `claude`.
+            "--setting-sources", "",
             "--allowedTools", self._allowed(web_search),
             "--disallowedTools", ",".join(CLAUDE_DENY_TOOLS),
         ]
@@ -199,6 +204,7 @@ class ClaudeEngine(Engine):
             "--model", model,
             "--effort", effort,
             "--permission-mode", "default",
+            "--setting-sources", "",
             "--allowedTools", self._allowed(web_search),
             "--disallowedTools", ",".join(CLAUDE_DENY_TOOLS),
         ]

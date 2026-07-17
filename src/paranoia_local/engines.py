@@ -17,9 +17,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from .runner import RunResult, run_capture
+from .runner import RunResult, run_capture, run_streaming
 
 Runner = Callable[[list[str], str, Path, int], RunResult]
+
+# Longest progress message forwarded to the client (spinner-line sized).
+_PROGRESS_MSG_MAX = 100
 
 
 @dataclass(frozen=True)
@@ -49,6 +52,12 @@ class Engine(ABC):
     def parse_output(self, stdout: str) -> Review:
         ...
 
+    def progress_from_line(self, line: str) -> str | None:
+        """Translate one raw stdout line into a short human progress message, or
+        ``None`` for lines that carry no user-facing signal. Engines whose CLI
+        emits a single final blob (no streaming) simply inherit this ``None``."""
+        return None
+
     def run(
         self,
         prompt: str,
@@ -56,11 +65,12 @@ class Engine(ABC):
         model: str,
         effort: str,
         web_search: bool,
-        runner: Runner = run_capture,
+        runner: Runner | None = None,
         timeout: int | None = None,
+        on_progress: Callable[[str], None] | None = None,
     ) -> Review:
         argv = self.build_argv(cwd, model, effort, web_search)
-        return self._execute(argv, prompt, cwd, runner, timeout)
+        return self._execute(argv, prompt, cwd, runner, timeout, on_progress)
 
     def resume(
         self,
@@ -70,18 +80,36 @@ class Engine(ABC):
         model: str,
         effort: str,
         web_search: bool,
-        runner: Runner = run_capture,
+        runner: Runner | None = None,
         timeout: int | None = None,
+        on_progress: Callable[[str], None] | None = None,
     ) -> Review:
         argv = self.build_resume_argv(session_ref, cwd, model, effort, web_search)
-        return self._execute(argv, prompt, cwd, runner, timeout)
+        return self._execute(argv, prompt, cwd, runner, timeout, on_progress)
 
     def _execute(
-        self, argv: list[str], prompt: str, cwd: Path, runner: Runner, timeout: int | None
+        self,
+        argv: list[str],
+        prompt: str,
+        cwd: Path,
+        runner: Runner | None,
+        timeout: int | None,
+        on_progress: Callable[[str], None] | None = None,
     ) -> Review:
         from .runner import DEFAULT_TIMEOUT_SEC
 
-        result = runner(argv, prompt, cwd, timeout or DEFAULT_TIMEOUT_SEC)
+        if on_progress is not None:
+            def _on_line(line: str) -> None:
+                msg = self.progress_from_line(line)
+                if msg:
+                    on_progress(msg)
+
+            streaming = runner or run_streaming
+            result = streaming(
+                argv, prompt, cwd, timeout or DEFAULT_TIMEOUT_SEC, on_line=_on_line
+            )
+        else:
+            result = (runner or run_capture)(argv, prompt, cwd, timeout or DEFAULT_TIMEOUT_SEC)
         if result.returncode != 0 and not result.stdout.strip():
             return Review(
                 text=(
@@ -131,6 +159,33 @@ class CodexEngine(Engine):
             argv += ["-c", "tools.web_search=true"]
         argv.append("-")
         return argv
+
+    def progress_from_line(self, line: str) -> str | None:
+        line = line.strip()
+        if not line:
+            return None
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(event, dict):
+            return None
+        if event.get("type") == "thread.started":
+            return "reviewer session started"
+        item = event.get("item")
+        if not isinstance(item, dict):
+            return None
+        kind = item.get("type")
+        if event.get("type") == "item.started" and kind == "command_execution":
+            command = str(item.get("command", ""))
+            return f"running: {command}"[:_PROGRESS_MSG_MAX]
+        if event.get("type") == "item.started" and kind == "mcp_tool_call":
+            return f"tool call: {item.get('server')}.{item.get('tool')}"[:_PROGRESS_MSG_MAX]
+        if event.get("type") == "item.completed" and kind == "agent_message":
+            text = item.get("text")
+            if isinstance(text, str) and text.strip():
+                return " ".join(text.split())[:_PROGRESS_MSG_MAX]
+        return None
 
     def parse_output(self, stdout: str) -> Review:
         thread_id: str | None = None

@@ -58,11 +58,13 @@ caller — spawn a fresh review each round feeding the growing `already_raised`
 list — until findings converge or drop to noise. (Never paste prior reviewers'
 prose; just the deduplicated claim + citation.)
 
-### Convergence packet mode (`converge: true`)
+### Convergence packet mode (`converge`, **on by default**)
 
 Each cold round otherwise re-gathers the same orientation — re-reading the touched
 files and re-running `git`, which measurements show dominates the per-round cost.
-Pass `converge: true` to `critique_branch` and the server instead **pre-gathers a
+`critique_branch` therefore runs in **convergence mode by default** (pass
+`converge: false`, or set it in `.paranoia.toml`, to fall back to the legacy in-place
+review). In convergence mode the server **pre-gathers a
 deterministic evidence packet** (the contents of every touched file in the reviewed
 snapshot — binary/large files are marked rather than embedded — plus the diff) and
 hands it to the reviewer with a packet-aware prompt, so it verifies rather than

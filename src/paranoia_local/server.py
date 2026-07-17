@@ -79,7 +79,7 @@ TOOLS: list[Tool] = [
                 },
                 "converge": {
                     "type": "boolean",
-                    "description": "Convergence mode (default false): pre-gather a deterministic evidence packet (touched files in full + diff) so the reviewer skips re-reading them every round, and review it against an immutable materialized worktree. Cheaper repeated rounds; always materializes (overrides isolate).",
+                    "description": "Convergence mode (default TRUE): pre-gather a deterministic evidence packet (touched files in full + diff) so the reviewer skips re-reading them every round, and review it against an immutable materialized worktree. Cheaper repeated rounds; always materializes (overrides isolate). Pass false to fall back to the legacy in-place review.",
                 },
                 "max_packet_chars": {
                     "type": "integer",

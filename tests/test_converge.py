@@ -66,11 +66,17 @@ class TestConvergeBranch:
         assert rec["mode"] == "converge-packet"
         assert rec["usage"] == {"cost_usd": 0.01}
 
-    def test_default_off_runs_in_live_repo_for_dirty(self, repo: Path, tmp_path: Path) -> None:
+    def test_default_on_materializes_for_dirty(self, repo: Path, tmp_path: Path) -> None:
         _dirty(repo)
         fake = FakeEngine()
-        handlers.critique_branch(_args(repo), engine=fake, log_dir=tmp_path)  # no converge
-        assert fake.calls[0]["cwd"] == repo  # unchanged behaviour: live repo for dirty
+        handlers.critique_branch(_args(repo), engine=fake, log_dir=tmp_path)  # converge is default
+        assert "paranoia-wt" in str(fake.calls[0]["cwd"])  # materialized snapshot, not live repo
+
+    def test_explicit_converge_false_restores_live_repo(self, repo: Path, tmp_path: Path) -> None:
+        _dirty(repo)
+        fake = FakeEngine()
+        handlers.critique_branch(_args(repo, converge=False), engine=fake, log_dir=tmp_path)
+        assert fake.calls[0]["cwd"] == repo  # escape hatch: legacy in-place review
 
     def test_converge_on_unborn_repo(self, tmp_path: Path) -> None:
         # A repo with files but no first commit must not crash on resolve_head.

@@ -113,7 +113,10 @@ def critique_branch(
     model = resolve("model", arguments.get("model"), cfg, engine.default_model)
     effort = resolve("effort", arguments.get("effort"), cfg, "high")
     web_search = bool(resolve("web_search", arguments.get("web_search"), cfg, True))
-    converge = bool(resolve("converge", arguments.get("converge"), cfg, False))
+    # Converge (packet) mode is ON by default: pre-gather a deterministic evidence packet
+    # and review it against an immutable materialized snapshot. Pass converge=false (call
+    # arg or .paranoia.toml) to fall back to the legacy in-place review.
+    converge = bool(resolve("converge", arguments.get("converge"), cfg, True))
     max_packet_chars = int(
         resolve("max_packet_chars", arguments.get("max_packet_chars"), cfg, orientation.MAX_PACKET_CHARS)
     )

@@ -59,19 +59,23 @@ class TestCritiqueBranch:
         assert "abc-999" in out
 
     def test_dirty_tree_runs_in_repo_not_worktree(self, repo: Path, tmp_path: Path) -> None:
+        # Legacy (non-converge) path: a dirty review runs in place. converge=False pins it,
+        # since converge (materialized snapshot) is now the default.
         (repo / "app.py").write_text("# uncommitted edit\n")
         eng = FakeEngine()
         handlers.critique_branch(
-            {"repo_path": str(repo), "include_uncommitted": True},
+            {"repo_path": str(repo), "include_uncommitted": True, "converge": False},
             engine=eng, log_dir=tmp_path, now=fixed_clock,
         )
         assert eng.calls[0]["cwd"] == repo
 
     def test_isolate_false_runs_in_repo(self, repo_with_branch: Path, tmp_path: Path) -> None:
+        # Legacy path: isolate=false reviews in place. converge=False required now that
+        # converge is the default (and converge always materializes, overriding isolate).
         eng = FakeEngine()
         handlers.critique_branch(
             {"repo_path": str(repo_with_branch), "base_ref": "main", "head_ref": "feature",
-             "isolate": False},
+             "isolate": False, "converge": False},
             engine=eng, log_dir=tmp_path, now=fixed_clock,
         )
         assert eng.calls[0]["cwd"] == repo_with_branch

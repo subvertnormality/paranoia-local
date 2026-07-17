@@ -77,6 +77,14 @@ TOOLS: list[Tool] = [
                     "type": "boolean",
                     "description": "Review inside a throwaway worktree of head_ref so it can't collide with ongoing work (default true; ignored for uncommitted).",
                 },
+                "converge": {
+                    "type": "boolean",
+                    "description": "Convergence mode (default false): pre-gather a deterministic evidence packet (touched files in full + diff) so the reviewer skips re-reading them every round, and review it against an immutable materialized worktree. Cheaper repeated rounds; always materializes (overrides isolate).",
+                },
+                "max_packet_chars": {
+                    "type": "integer",
+                    "description": "Total character budget for the converge packet (default 400000). The already_raised list is always preserved; only file evidence is trimmed.",
+                },
                 "project_summary": {"type": "string", "description": "Neutral factual description of the project (not advocacy). The reviewer tests the diff against it."},
                 "diff_intent": {"type": "string", "description": "What the diff is SUPPOSED to achieve — treated as a claim to verify."},
                 "focus": {"type": "string", "description": "Narrow the review to a specific concern."},

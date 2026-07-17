@@ -18,9 +18,14 @@ from pathlib import Path
 
 
 def _git(args: list[str], cwd: Path) -> None:
-    r = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
+    # Capture bytes, not text: `git worktree add` runs a non-quiet `reset --hard` that echoes
+    # the checked-out commit's subject, which for a committed review is author-controlled and
+    # may not be valid UTF-8 — a strict text decode there would crash the review.
+    r = subprocess.run(["git", *args], cwd=cwd, capture_output=True)
     if r.returncode != 0:
-        raise RuntimeError(f"git {' '.join(args)} failed: {r.stderr.strip()}")
+        raise RuntimeError(
+            f"git {' '.join(args)} failed: {r.stderr.decode('utf-8', errors='replace').strip()}"
+        )
 
 
 @contextmanager

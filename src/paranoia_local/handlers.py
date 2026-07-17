@@ -52,7 +52,15 @@ def _footer(review: Review, engine: Engine) -> str:
         )
     else:
         note = f"\n\n---\n_paranoia-local · engine={engine.name}_"
-    return (review.text or "[empty review]") + note
+    # Surface a failed run explicitly — a non-zero exit or an in-band engine error means
+    # the text below may be an error message or a truncated/aborted review, not a verdict.
+    prefix = ""
+    if review.error:
+        prefix = (
+            f"⚠️ REVIEW FAILED (engine={engine.name}, exit={review.returncode}) — treat the "
+            f"output below as an error, not a completed review.\n\n"
+        )
+    return prefix + (review.text or "[empty review]") + note
 
 
 def _progress_kwargs(on_progress: Callable[[str], None] | None) -> dict[str, Any]:
@@ -74,6 +82,8 @@ def _log(
         record={
             "engine": engine.name,
             "session_ref": review.session_ref,
+            "returncode": review.returncode,
+            "error": review.error,
             "text": review.text,
             **extra,
         },
@@ -103,8 +113,21 @@ def critique_branch(
     model = resolve("model", arguments.get("model"), cfg, engine.default_model)
     effort = resolve("effort", arguments.get("effort"), cfg, "high")
     web_search = bool(resolve("web_search", arguments.get("web_search"), cfg, True))
+    converge = bool(resolve("converge", arguments.get("converge"), cfg, False))
+    max_packet_chars = int(
+        resolve("max_packet_chars", arguments.get("max_packet_chars"), cfg, orientation.MAX_PACKET_CHARS)
+    )
 
     target = orientation.resolve_target(repo, base_ref, head_ref, include_unc)
+
+    if converge:
+        return _converge_branch_review(
+            repo, engine, target=target, base_ref=base_ref, head_ref=head_ref,
+            project_summary=project_summary, diff_intent=diff_intent, focus=focus,
+            already=already, model=model, effort=effort, web_search=web_search,
+            max_packet_chars=max_packet_chars, log_dir=log_dir, now=now, on_progress=on_progress,
+        )
+
     packet = orientation.build_orientation(
         repo, target, project_summary, diff_intent, focus, already
     )
@@ -120,6 +143,59 @@ def critique_branch(
 
     _log(log_dir, "critique_branch", engine, review, now,
          {"target": target.description, "model": model})
+    return _footer(review, engine)
+
+
+def _converge_branch_review(
+    repo: Path,
+    engine: Engine,
+    *,
+    target: orientation.Target,
+    base_ref: str,
+    head_ref: str | None,
+    project_summary: str | None,
+    diff_intent: str | None,
+    focus: str | None,
+    already: list[str],
+    model: str,
+    effort: str,
+    web_search: bool,
+    max_packet_chars: int,
+    log_dir: Path,
+    now: Clock,
+    on_progress: Callable[[str], None] | None,
+) -> str:
+    """Opt-in convergence path: pre-gather a deterministic packet so the reviewer skips
+    the re-read/re-grep turns, and review it against an IMMUTABLE materialized worktree
+    (which always applies here, overriding isolate=false — mixed-revision evidence off a
+    live mutable tree is exactly what this prevents)."""
+    if target.is_dirty:
+        if orientation.has_head(repo):
+            base_id = orientation.resolve_head(repo)
+            parent: str | None = base_id
+        else:
+            # Unborn repo (files, no commit yet): base off git's empty tree, parentless wrapper.
+            base_id = orientation.empty_tree(repo)
+            parent = None
+        head_id = orientation.wrap_commit(repo, orientation.snapshot_tree(repo, base_id), parent)
+    else:
+        base_id = orientation.resolve_ref(repo, base_ref)
+        head_id = orientation.resolve_ref(repo, head_ref or "HEAD")
+
+    packet = orientation.build_packet(
+        repo, base_id, head_id,
+        project_summary=project_summary, diff_intent=diff_intent, focus=focus,
+        already_raised=already, max_chars=max_packet_chars,
+    )
+    prompt = prompts.compose(prompts.CODE_REVIEW_INSTRUCTIONS_PACKET, packet)
+
+    with worktree_at(repo, head_id) as wt:
+        review = engine.run(prompt, wt, model, effort, web_search,
+                            **_progress_kwargs(on_progress))
+
+    _log(log_dir, "critique_branch", engine, review, now,
+         {"target": target.description, "model": model, "mode": "converge-packet",
+          "usage": review.usage, "duration_ms": review.duration_ms})
     return _footer(review, engine)
 
 

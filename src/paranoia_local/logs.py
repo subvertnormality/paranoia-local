@@ -7,6 +7,7 @@ so all failures are swallowed and reported as a `None` return.
 from __future__ import annotations
 
 import json
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +25,9 @@ def write_log(
     try:
         log_dir = Path(log_dir)
         log_dir.mkdir(parents=True, exist_ok=True)
-        path = log_dir / f"{timestamp}-{tool}.json"
+        # A short random suffix keeps two same-tool reviews that finish within the
+        # same clock second (the timestamp's resolution) from overwriting each other.
+        path = log_dir / f"{timestamp}-{tool}-{uuid.uuid4().hex[:8]}.json"
         payload = {"timestamp": timestamp, "tool": tool, **record}
         path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
         return path

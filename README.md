@@ -58,6 +58,22 @@ caller — spawn a fresh review each round feeding the growing `already_raised`
 list — until findings converge or drop to noise. (Never paste prior reviewers'
 prose; just the deduplicated claim + citation.)
 
+### Convergence packet mode (`converge: true`)
+
+Each cold round otherwise re-gathers the same orientation — re-reading the touched
+files and re-running `git`, which measurements show dominates the per-round cost.
+Pass `converge: true` to `critique_branch` and the server instead **pre-gathers a
+deterministic evidence packet** (the contents of every touched file in the reviewed
+snapshot — binary/large files are marked rather than embedded — plus the diff) and
+hands it to the reviewer with a packet-aware prompt, so it verifies rather than
+re-collects. The review runs against a **materialized worktree** of the snapshot
+captured at request time, so evidence is a consistent point-in-time view that later
+live edits can't perturb, and `already_raised` is always preserved under the packet
+budget (`max_packet_chars`, default 400k). Deterministic and per-request — no
+persistent session or handle; independent of the reviewer engine. (The end-to-end
+saving is the subject of the plan's acceptance benchmark; the mechanism removes the
+gather step, but treat the magnitude as pending that measurement.)
+
 ## Install
 
 ### Prerequisites
@@ -203,9 +219,16 @@ All tools accept:
   target ref, so they never collide with your working tree and can review a
   branch that isn't checked out. (Dirty-working-tree reviews necessarily run in
   the live repo, read-only.)
-- **No API keys, no telemetry, no state.** The server shells out to a CLI you're
-  already signed into. It writes a local audit record per review to
-  `~/.paranoia/logs/` (provenance + the session ref for `rebut`) and nothing else.
+- **No API keys, no telemetry, minimal state.** The server shells out to a CLI
+  you're already signed into. It writes a local audit record per review to
+  `~/.paranoia/logs/` (provenance + the session ref for `rebut`). In `converge`
+  mode (below) it additionally creates a short-lived git worktree and a few
+  **unreferenced** git objects (the reviewed snapshot) in the target repo. On a
+  clean exit both are cleaned up (best-effort) and no ref is ever created. A hard
+  crash mid-review — or a rare teardown failure —
+  can leave the worktree registration (and, while it exists, the snapshot objects
+  it checks out) until the next `git worktree prune`/`git gc` — run either to
+  reclaim them. Your working tree and index are never touched.
 
 ## Rate limits
 

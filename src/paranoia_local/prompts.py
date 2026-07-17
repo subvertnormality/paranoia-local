@@ -65,6 +65,15 @@ You are read-only. Do not write, edit, or run the whole test suite — it is slo
 - Tag every item in "What doesn't work", "Risks", "Gaps", and "Improvements" with exactly one of: [BLOCKER] (ships a bug / data loss / money loss / live-trading miswiring / security hole), [MAJOR] (fix before merge — breaks a documented invariant, test, or workflow), [MINOR] (fix opportunistically), [OUT-OF-SCOPE] (real, but beyond this change's stated intent — file separately, don't fold in). The author treats untagged advice as mandatory; miscalibrated tags cause either shipped bugs or wasted churn.
 - Compare the change to the AUTHOR-STATED INTENT: does the code actually do what the author claims? Mismatches go in "What doesn't work" with the intent quoted."""
 
+
+_PACKET_PREAMBLE = """## The evidence was gathered for you — do not re-gather it
+The task input contains, under `=== FILE … ===` sections, the current contents of every touched file in the exact snapshot under review, plus the diff and diffstat. Treat these as authoritative. DO NOT re-open, re-read, or `git diff`/`git show` a file whose contents are fully provided — that is the routine gather step this packet exists to eliminate. EXCEPTIONS you MUST open yourself: any file section marked `[TRUNCATED …]`, `[binary …]`, `[non-UTF-8 …]`, or `[not embeddable …]`, and an `=== EVIDENCE TRUNCATED ===` notice means further touched files were omitted — open those in your worktree. Investigate FURTHER — call-sites, related modules, git history, configs — only where a specific finding needs evidence not already in front of you. Spend your effort on judgment, not on re-collecting what is already provided."""
+
+# Packet-aware code review: same rubric, but the evidence is pre-supplied, so the
+# "read every touched file / re-run git" gather step is replaced by a verify-and-go-deeper
+# instruction. Used by the Phase-1 `converge` path (handlers.critique_branch).
+CODE_REVIEW_INSTRUCTIONS_PACKET = CODE_REVIEW_INSTRUCTIONS + "\n\n" + _PACKET_PREAMBLE
+
 PLAN_REVIEW_INSTRUCTIONS = f"""You are Paranoia, an adversarial reviewer of plans and design documents. Assume the plan will fail in ways the author has not considered.
 
 When a repository is available to you, you are running as an autonomous agent inside it with READ access to the entire codebase and git history. The CODE IS GROUND TRUTH for how the system behaves today. Your single most valuable job: test every premise the plan makes about current behaviour against the actual code. A plan that asserts "X currently does Y" when the code shows otherwise is the most dangerous kind of plan — that is a top-severity finding, and you must quote the contradicting file:line. If a premise depends on code you cannot find, say so explicitly rather than guessing.

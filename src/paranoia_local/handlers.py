@@ -68,6 +68,25 @@ def _progress_kwargs(on_progress: Callable[[str], None] | None) -> dict[str, Any
     return {"on_progress": on_progress} if on_progress is not None else {}
 
 
+def _calibration(stakes: str | None, review_round: int | None) -> str | None:
+    """Render the reviewer-calibration block. STAKES bounds legitimate concern
+    (findings beyond it are out of scope); ROUND sets the severity floor across a
+    convergence loop (high rounds report only blocking findings). Both optional;
+    absent → the reviewer assumes a modest internal tool and reports everything."""
+    lines: list[str] = []
+    if stakes:
+        lines.append(f"STAKES: {stakes}")
+    if review_round is not None and review_round >= 1:
+        lines.append(f"ROUND: {review_round}")
+    if not lines:
+        return None
+    return "=== REVIEW CALIBRATION ===\n" + "\n".join(lines)
+
+
+def _prepend(block: str | None, body: str) -> str:
+    return f"{block}\n\n{body}" if block else body
+
+
 def _log(
     log_dir: Path,
     tool: str,
@@ -120,6 +139,11 @@ def critique_branch(
     max_packet_chars = int(
         resolve("max_packet_chars", arguments.get("max_packet_chars"), cfg, orientation.MAX_PACKET_CHARS)
     )
+    # Calibration: STAKES (project-level, so also honoured from .paranoia.toml) bounds
+    # scope; ROUND (per-call, raised each convergence round) sets the severity floor.
+    calibration = _calibration(
+        resolve("stakes", arguments.get("stakes"), cfg, None), arguments.get("round")
+    )
 
     target = orientation.resolve_target(repo, base_ref, head_ref, include_unc)
 
@@ -128,13 +152,14 @@ def critique_branch(
             repo, engine, target=target, base_ref=base_ref, head_ref=head_ref,
             project_summary=project_summary, diff_intent=diff_intent, focus=focus,
             already=already, model=model, effort=effort, web_search=web_search,
-            max_packet_chars=max_packet_chars, log_dir=log_dir, now=now, on_progress=on_progress,
+            max_packet_chars=max_packet_chars, calibration=calibration,
+            log_dir=log_dir, now=now, on_progress=on_progress,
         )
 
     packet = orientation.build_orientation(
         repo, target, project_summary, diff_intent, focus, already
     )
-    prompt = prompts.compose(prompts.CODE_REVIEW_INSTRUCTIONS, packet)
+    prompt = prompts.compose(prompts.CODE_REVIEW_INSTRUCTIONS, _prepend(calibration, packet))
 
     if target.is_dirty or not isolate:
         review = engine.run(prompt, repo, model, effort, web_search,
@@ -164,6 +189,7 @@ def _converge_branch_review(
     effort: str,
     web_search: bool,
     max_packet_chars: int,
+    calibration: str | None,
     log_dir: Path,
     now: Clock,
     on_progress: Callable[[str], None] | None,
@@ -190,7 +216,7 @@ def _converge_branch_review(
         project_summary=project_summary, diff_intent=diff_intent, focus=focus,
         already_raised=already, max_chars=max_packet_chars,
     )
-    prompt = prompts.compose(prompts.CODE_REVIEW_INSTRUCTIONS_PACKET, packet)
+    prompt = prompts.compose(prompts.CODE_REVIEW_INSTRUCTIONS_PACKET, _prepend(calibration, packet))
 
     with worktree_at(repo, head_id) as wt:
         review = engine.run(prompt, wt, model, effort, web_search,
@@ -261,8 +287,11 @@ def critique_plan(
     effort = resolve("effort", arguments.get("effort"), cfg, "high")
     web_search = bool(resolve("web_search", arguments.get("web_search"), cfg, True))
 
+    calibration = _calibration(
+        resolve("stakes", arguments.get("stakes"), cfg, None), arguments.get("round")
+    )
     body = _plan_body(plan_text, context, focus, already, repo_grounded=bool(repo))
-    prompt = prompts.compose(prompts.PLAN_REVIEW_INSTRUCTIONS, body)
+    prompt = prompts.compose(prompts.PLAN_REVIEW_INSTRUCTIONS, _prepend(calibration, body))
     review = engine.run(prompt, cwd, model, effort, web_search,
                         **_progress_kwargs(on_progress))
 

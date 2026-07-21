@@ -58,6 +58,29 @@ caller — spawn a fresh review each round feeding the growing `already_raised`
 list — until findings converge or drop to noise. (Never paste prior reviewers'
 prose; just the deduplicated claim + citation.)
 
+**Two calibration levers keep the loop proportionate and terminating** — tune
+them per round (they exist because an uncalibrated cold reviewer defaults to
+maximum paranoia and manufactures marginal/hardening findings for 20+ rounds):
+
+- **`stakes`** — the real deployment context / threat model / scale (e.g.
+  `"single-user local CLI, trusted input, no multi-tenancy"`). The reviewer
+  treats it as the **boundary of legitimate concern**: findings that assume
+  adversaries, scale, or failure modes beyond it are dropped or tagged
+  `[OUT-OF-SCOPE]`, never must-fix. Omit it and the reviewer assumes a *modest
+  internal tool*, not a hostile/high-scale service. Set it **once per project in
+  `.paranoia.toml`**; override per-call to tighten. This is the single highest-
+  leverage lever against hardening scope-creep.
+- **`round`** — the 1-based loop round. **Increment it each cold round.** At
+  `round >= 3` the reviewer reports only merge-blocking in-scope findings
+  (`[MAJOR]` or higher for the review mode) and says `CONVERGED` — inside the
+  five-section format — when none remain, which is how you *stop* the loop
+  instead of chasing diminishing findings. Start at 1; raise as the design stabilises.
+
+Operator recipe: set `stakes` in `.paranoia.toml`, then loop `already_raised` +
+`round` (1, 2, 3, …); stop when a round returns `CONVERGED` or only
+`[OUT-OF-SCOPE]`/`[MINOR]` items. Fold `[FATAL]`/in-scope-`[MAJOR]` findings;
+record `[OUT-OF-SCOPE]` ones separately rather than growing the design to fix them.
+
 ### Convergence packet mode (`converge`, **on by default**)
 
 Each cold round otherwise re-gathers the same orientation — re-reading the touched
@@ -183,6 +206,9 @@ project_summary = "A booking API. Python/FastAPI, Postgres. Auth via short-lived
 base_ref = "develop"
 web_search = true      # allow external methodology/library cross-checks
 isolate = true         # review inside a throwaway worktree
+# stakes: the deployment reality the reviewer must stay proportionate to (see
+# "Convergence loop"). Set once here so every review is calibrated to the project.
+stakes = "Internal booking API, single team, authenticated first-party callers, ~1k req/min."
 # model / effort overrides also honoured
 ```
 

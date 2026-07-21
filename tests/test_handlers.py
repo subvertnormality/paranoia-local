@@ -89,6 +89,47 @@ class TestCritiqueBranch:
         )
         assert "greeting not escaped" in eng.calls[0]["prompt"]
 
+    def test_stakes_and_round_reach_reviewer(self, repo_with_branch: Path, tmp_path: Path) -> None:
+        eng = FakeEngine()
+        handlers.critique_branch(
+            {"repo_path": str(repo_with_branch), "base_ref": "main", "head_ref": "feature",
+             "stakes": "single-user CLI ZZZMARK", "round": 3},
+            engine=eng, log_dir=tmp_path, now=fixed_clock,
+        )
+        p = eng.calls[0]["prompt"]
+        assert "single-user CLI ZZZMARK" in p
+        assert "ROUND: 3" in p
+
+    def test_stakes_resolved_from_repo_config(self, repo_with_branch: Path, tmp_path: Path) -> None:
+        (repo_with_branch / ".paranoia.toml").write_text('stakes = "CFGSTAKES"\n')
+        eng = FakeEngine()
+        handlers.critique_branch(
+            {"repo_path": str(repo_with_branch), "base_ref": "main", "head_ref": "feature"},
+            engine=eng, log_dir=tmp_path, now=fixed_clock,
+        )
+        assert "CFGSTAKES" in eng.calls[0]["prompt"]
+
+    def test_round_below_one_is_ignored(self, repo_with_branch: Path, tmp_path: Path) -> None:
+        # dogfood finding: schema is 1-based; a non-positive round must not emit a ROUND line.
+        eng = FakeEngine()
+        handlers.critique_branch(
+            {"repo_path": str(repo_with_branch), "base_ref": "main", "head_ref": "feature", "round": 0},
+            engine=eng, log_dir=tmp_path, now=fixed_clock,
+        )
+        body = eng.calls[0]["prompt"].split("===== TASK INPUT =====", 1)[1]
+        assert "ROUND:" not in body
+
+    def test_no_calibration_block_in_body_when_absent(self, repo_with_branch: Path, tmp_path: Path) -> None:
+        # The instructions always DESCRIBE the calibration block; assert it isn't
+        # INJECTED into the task-input body when neither stakes nor round is given.
+        eng = FakeEngine()
+        handlers.critique_branch(
+            {"repo_path": str(repo_with_branch), "base_ref": "main", "head_ref": "feature"},
+            engine=eng, log_dir=tmp_path, now=fixed_clock,
+        )
+        body = eng.calls[0]["prompt"].split("===== TASK INPUT =====", 1)[1]
+        assert "REVIEW CALIBRATION" not in body
+
     def test_writes_audit_log(self, repo_with_branch: Path, tmp_path: Path) -> None:
         handlers.critique_branch(
             {"repo_path": str(repo_with_branch), "base_ref": "main", "head_ref": "feature"},
@@ -148,6 +189,16 @@ class TestCritiquePlan:
             {"plan_path": str(plan)}, engine=eng, log_dir=tmp_path, now=fixed_clock,
         )
         assert "risky thing" in eng.calls[0]["prompt"]
+
+    def test_stakes_and_round_reach_plan_reviewer(self, tmp_path: Path) -> None:
+        eng = FakeEngine()
+        handlers.critique_plan(
+            {"plan_text": "do a thing", "stakes": "PLANSTAKESMARK", "round": 5},
+            engine=eng, log_dir=tmp_path, now=fixed_clock,
+        )
+        p = eng.calls[0]["prompt"]
+        assert "PLANSTAKESMARK" in p
+        assert "ROUND: 5" in p
 
     def test_repo_grounding_runs_in_repo(self, repo: Path, tmp_path: Path) -> None:
         eng = FakeEngine()

@@ -54,6 +54,33 @@ _ALREADY_RAISED = {
     ),
 }
 
+# Calibration inputs — the levers an LLM operator tunes to keep a convergence loop
+# proportionate and terminating (see README "Convergence loop").
+_STAKES = {
+    "type": "string",
+    "description": (
+        "The real deployment context / threat model / scale this work operates in "
+        "(e.g. 'single-user local CLI, trusted input, no multi-tenancy, ~hundreds of files'). "
+        "The reviewer treats it as the BOUNDARY of legitimate concern: findings that assume "
+        "adversaries, scale, concurrency, or failure modes beyond it are dropped or tagged "
+        "[OUT-OF-SCOPE], never must-fix — this keeps the review proportionate and stops "
+        "hardening/scope-creep. Omit and the reviewer assumes a MODEST internal tool (trusted "
+        "operators, no hostile input), not a hostile/high-scale service. Best set once per "
+        "project in .paranoia.toml; override per-call to tighten for a specific review."
+    ),
+}
+_ROUND = {
+    "type": "integer",
+    "minimum": 1,
+    "description": (
+        "Convergence-loop round number (1-based). Increment it on each cold review round you run. "
+        "At round >=3 the reviewer restricts itself to blocking ([FATAL]/[BLOCKER]) in-scope "
+        "findings and declares 'CONVERGED' when none remain — this is the lever to STOP a loop "
+        "instead of chasing marginal/hardening findings across many rounds. Start at 1 and raise "
+        "as the design stabilises; omit to report at all severities (round-1 behaviour)."
+    ),
+}
+
 TOOLS: list[Tool] = [
     Tool(
         name="critique_branch",
@@ -89,6 +116,8 @@ TOOLS: list[Tool] = [
                 "diff_intent": {"type": "string", "description": "What the diff is SUPPOSED to achieve — treated as a claim to verify."},
                 "focus": {"type": "string", "description": "Narrow the review to a specific concern."},
                 "already_raised": _ALREADY_RAISED,
+                "stakes": _STAKES,
+                "round": _ROUND,
                 **_COMMON,
             },
             "required": ["repo_path"],
@@ -110,6 +139,8 @@ TOOLS: list[Tool] = [
                 "repo_path": {"type": "string", "description": "Repo the plan concerns — enables grounding the critique in real code (strongly recommended)."},
                 "focus": {"type": "string", "description": "Narrow the review to a specific concern."},
                 "already_raised": _ALREADY_RAISED,
+                "stakes": _STAKES,
+                "round": _ROUND,
                 **_COMMON,
             },
         },

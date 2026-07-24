@@ -74,10 +74,12 @@ _ROUND = {
     "minimum": 1,
     "description": (
         "Convergence-loop round number (1-based). Increment it on each cold review round you run. "
-        "At round >=3 the reviewer restricts itself to blocking ([FATAL]/[BLOCKER]) in-scope "
-        "findings and declares 'CONVERGED' when none remain — this is the lever to STOP a loop "
-        "instead of chasing marginal/hardening findings across many rounds. Start at 1 and raise "
-        "as the design stabilises; omit to report at all severities (round-1 behaviour)."
+        "At round >=3 the reviewer restricts itself to merge-blocking in-scope findings — MAJOR "
+        "or higher ([BLOCKER]/[MAJOR] for code review, [FATAL]/[MAJOR] for plan review) — and "
+        "withholds [MINOR] and [OUT-OF-SCOPE], declaring 'CONVERGED' when none remain. This is "
+        "the lever to STOP a loop instead of chasing marginal/hardening findings across many "
+        "rounds. Start at 1 and raise as the design stabilises; omit to report at all severities "
+        "(round-1 behaviour)."
     ),
 }
 

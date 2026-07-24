@@ -71,8 +71,9 @@ def _progress_kwargs(on_progress: Callable[[str], None] | None) -> dict[str, Any
 def _calibration(stakes: str | None, review_round: int | None) -> str | None:
     """Render the reviewer-calibration block. STAKES bounds legitimate concern
     (findings beyond it are out of scope); ROUND sets the severity floor across a
-    convergence loop (high rounds report only blocking findings). Both optional;
-    absent → the reviewer assumes a modest internal tool and reports everything."""
+    convergence loop (round >=3 reports MAJOR-or-higher only, withholding MINOR
+    and OUT-OF-SCOPE). Both optional; absent → the reviewer assumes a modest
+    internal tool and reports everything."""
     lines: list[str] = []
     if stakes:
         lines.append(f"STAKES: {stakes}")
